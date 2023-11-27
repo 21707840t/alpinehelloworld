@@ -1,0 +1,103 @@
+pipeline{
+    environnement{
+	IMAGE_NAME = "alpinehelloworld"
+	IMAGE_TAG = "latest"
+	PRODUCTION = "eazytraining-PRODUCTION"  #nom du projet dans heroku
+	PRODUCTION = "eazytraining-production" #environnement de travail
+	}
+	agent none
+	stages{
+	  stage('build image'){
+	    agent any
+		steps{
+		   script{
+		   sh 'docker build -t eazytraining/$IMAGE_NAME:$IMAGE_TAG .'
+		   }	   
+	    }
+	}
+	stage('run container based on build'){
+	    agent any
+		steps{
+		   script{
+		   sh '''
+		       docker run --name $IMAGE_NAME -d -p 80:5000 -e PORT=5000 eazytraining/$IMAGE_NAME:$IMAGE_TAG
+			   sleep 5
+		   
+		       '''
+		   }
+		}	
+	}
+	
+	stage('test image'){
+	    agent any
+		steps{
+		   script{
+		   sh '''
+		       curl http://localhost | grep -q "hello word"
+		   
+		       '''
+		   }
+		}	
+	}
+	
+	stage('clean container'){
+	    agent any
+		steps{
+		   script{
+		   sh '''
+		       docker stop $IMAGE_NAME
+			   docker rm $IMAGE_NAME
+		   
+		       '''
+		   }
+		}	
+	}
+	
+	stage('push image in stagging and deployment'){
+	    agent any
+		when{
+		      expression {GIT_BRANCH == 'origin/master'}
+			  	
+		}
+		agent any
+		environnement {
+		HEROKU_API_KEY = credentials('heroku_api_key')  #Le credentialsdans jenkins pour accedeerr à heroku
+		}
+		steps{
+		   script{
+		   sh '''
+		      heroku container:login   #pour se connecter à heroku pour utiliser le token
+			  heroku create $PRODUCTION || echo "projet already exist" #création du projet
+			  heroku container:push -a $PRODUCTION web #builder et pusher l application
+			  heroku container:release -a $PRODUCTION web #deploie l application, la rendre disponible
+		   
+		       '''
+		   }
+		}	
+	}
+	
+	
+	stage('push image in production and deployment'){
+	    agent any
+		when{
+		      expression {GIT_BRANCH == 'origin/master'}
+			  	
+		}
+		agent any
+		environnement {
+		HEROKU_API_KEY = credentials('heroku_api_key')  #Le credentialsdans jenkins pour accedeerr à heroku
+		}
+		steps{
+		   script{
+		   sh '''
+		      heroku container:login   #pour se connecter à heroku pour utiliser le token
+			  heroku create $PRODUCTION || echo "projet already exist" #création du projet
+			  heroku container:push -a $PRODUCTION web #builder et pusher l application
+			  heroku container:release -a $PRODUCTION web #deploie l application, la rendre disponible
+		   
+		       '''
+		   }
+		}	
+	}
+ } 
+}
